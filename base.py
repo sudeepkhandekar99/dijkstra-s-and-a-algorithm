@@ -2,6 +2,8 @@ from collections import defaultdict
 import copy
 from queue import PriorityQueue
 
+import numpy as np
+
 def serialize (state):
     result = []
     for row in state:
@@ -12,16 +14,17 @@ def serialize (state):
 def deserialize (serialized):
     splitted = serialized.split(':')
     splitted = [int(x) for x in splitted]
-    return [splitted[:3], splitted[3:6], splitted[6:]]
+    order_ = int(len(splitted)**0.5)
+    return np.array(splitted).reshape(order_, order_).tolist()
 
-def get_neighbours(state):
+def get_neighbours(state, order_):
     deserialized = deserialize(state)
     neighbours = []
     blank_i = -1
     blank_j = -1
 
-    for i in range(0, 3):
-        for j in range(0, 3):
+    for i in range(0, order_):
+        for j in range(0, order_):
             if deserialized[i][j] == 0:
                 blank_i, blank_j = i, j
                 break
@@ -34,7 +37,7 @@ def get_neighbours(state):
         new_matrix[i][j] = new_matrix[i - 1][j]
         new_matrix[i - 1][j] = 0
         neighbours.append(serialize(new_matrix))
-    if i < 2:
+    if i < order_-1:
         new_matrix = copy.deepcopy(deserialized)
         new_matrix[i][j] = new_matrix[i + 1][j]
         new_matrix[i + 1][j] = 0
@@ -44,7 +47,7 @@ def get_neighbours(state):
         new_matrix[i][j] = new_matrix[i][j - 1]
         new_matrix[i][j - 1] = 0
         neighbours.append(serialize(new_matrix))
-    if j < 2:
+    if j < order_-1:
         new_matrix = copy.deepcopy(deserialized)
         new_matrix[i][j] = new_matrix[i][j + 1]
         new_matrix[i][j + 1] = 0
@@ -52,7 +55,29 @@ def get_neighbours(state):
 
     return zip(neighbours, [1 for x in neighbours])
 
-def dijkstra(start_node, target_node):
+def h(state):
+    deserialized = deserialize(state)
+    order_ = len(deserialized)
+    H = 0
+    for i in range(0, order_):
+        for j in range(0, order_):
+            H += abs(deserialized[i][j] % order_ - j) + abs(deserialized[i][j] / order_ - i)
+    return H
+
+def in_open_set_with_lowest_heuristic_guess(open_set, heuristic_guess):
+    result, min_guess = None, float('inf')
+    for v in open_set:
+        if v in heuristic_guess:
+            guess = heuristic_guess[v]
+            if guess < min_guess:
+                result = v
+                min_guess = guess
+    return result
+
+def dijkstra(start_node):
+    order_ = len(start_node)
+
+    target_node = np.array(range(order_**2)).reshape(order_, order_).tolist()
     start_node = serialize(start_node)
     target_node = serialize(target_node)
 
@@ -74,7 +99,7 @@ def dijkstra(start_node, target_node):
             break
         visited.add(current_node)
 
-        for (neighbour, distance_from_current_node) in get_neighbours(current_node):
+        for (neighbour, distance_from_current_node) in get_neighbours(current_node, order_):
             if neighbour not in visited:
                 old_cost = D[neighbour]
                 new_cost = D[current_node] + distance_from_current_node
@@ -96,33 +121,10 @@ def dijkstra(start_node, target_node):
         path.reverse()
     return (path, iteratrion)
 
-if __name__ == '__main__':
-    start_state = [[3,4,5], [6,1,2], [7,8,0]]
-    target_state = [[0,1,2],[3,4,5],[6,7,8]]
+def astar_lloyd(start_node, h):
+    order_ = len(start_node)
 
-    print('Dijkstra benchmark')
-    (path, iteration) = dijkstra(start_state, target_state)
-    print(path, iteration)
-
-def h(state):
-    deserialized = deserialize(state)
-    H = 0
-    for i in range(0, 3):
-        for j in range(0, 3):
-            H += abs(deserialized[i][j] % 3 - j) + abs(deserialized[i][j] / 3 - i)
-    return H
-
-def in_open_set_with_lowest_heuristic_guess(open_set, heuristic_guess):
-    result, min_guess = None, float('inf')
-    for v in open_set:
-        if v in heuristic_guess:
-            guess = heuristic_guess[v]
-            if guess < min_guess:
-                result = v
-                min_guess = guess
-    return result
-
-def astar_lloyd(start_node, target_node, h):
+    target_node = np.array(range(order_**2)).reshape(order_, order_)
     start_node = serialize(start_node)
     target_node = serialize(target_node)
 
@@ -147,7 +149,7 @@ def astar_lloyd(start_node, target_node, h):
             break
 
         open_set.remove(current_node)
-        for (neighbour_node, weight) in get_neighbours(current_node):
+        for (neighbour_node, weight) in get_neighbours(current_node, order_):
             new_cheapest_path = cheapest_paths[current_node] + weight
             if new_cheapest_path < cheapest_paths[neighbour_node]:
                 parents[neighbour_node] = current_node
@@ -166,8 +168,11 @@ def astar_lloyd(start_node, target_node, h):
     return (path, iteration)
 
 if __name__ == '__main__':
-    start_node = [[2,3,5], [1,4,0], [7,8,6]]
-    target_node = [[0,1,2],[3,4,5],[6,7,8]]
+    start_state = [[2,3,5], [1,4,0], [7,8,6]]
+
+    print('Dijkstra benchmark')
+    (path, iteration) = dijkstra(start_state)
+    print(path, iteration)
     print('Astar benchmark')
-    (path, iteration) = astar_lloyd(start_node, target_node, h)
+    (path, iteration) = astar_lloyd(start_state, h)
     print(path, iteration)
